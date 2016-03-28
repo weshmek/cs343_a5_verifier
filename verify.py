@@ -28,6 +28,7 @@ class WATOffice(SimObj):
 	amtToTransfer = 0
 	workGiven = False
 	jobsToGive = []
+	jobs = 0
 
 class Job:
 	studentAmt = 0
@@ -179,6 +180,7 @@ def check_watoff(state, line):
 		if state.watoff.jobsToGive == []:
 			raise Exception("Error! Empty array!")
 		state.students[studentId].cardLost = False
+		state.watoff.jobs += 1
 	elif line.watoff[0] == 'T':
 		studentId = int(line.watoff[1])
 		studentAmt = int(line.watoff[3])
@@ -188,8 +190,9 @@ def check_watoff(state, line):
 			if j.studentId == studentId:
 				raise Exception("Error! T Student " + str(studentId) + " requesting two jobs at same time!" + str(j.studentAmt) + " " + str(studentAmt))
 		state.watoff.jobsToGive.append(Job(studentId, studentAmt))
+		state.watoff.jobs += 1
 	elif line.watoff[0] == 'W':
-		return
+		state.watoff.jobs -= 1
 	elif line.watoff[0] == 'F':
 		state.watoff.ended = True
 	else:
@@ -266,6 +269,10 @@ def check_student(_id, state, line):
 		me.numBottles = bottles
 		me.started = True	
 	elif cmd[0] == 'V':
+		#TODO: For some reason, in the output given by the sample executable,
+		# 	NameServer N outputs always appear AFTER (or on the same line) as the student V output.
+		# 	This is counterintuitive, since the nameserver should generate the name before the student gets to use it.
+		#	For that reason, this section is incomplete.
 		machine = int(cmd[1]) #Nameserver needs to check this
 		#if me.machine != machine:
 		#	raise Exception("Error! Bad machine registration")
@@ -297,13 +304,13 @@ def check_nameserver(state, line):
 			raise Exception("Error! Started twice!")
 		me.started = True
 	elif cmd[0] == 'N':
+		#TODO: For some reason, in the output given by the sample executable,
+		# 	NameServer N outputs always appear AFTER (or on the same line) as the student V output.
+		# 	This is counterintuitive, since the nameserver should generate the name before the student gets to use it.
+		#	For that reason, this section is incomplete.
 		studentId = int(cmd[1])
 		machine = int(cmd[3])
 		state.students[studentId].machine = machine
-		
-	elif cmd[0] == 'V':
-		#TODO
-		return
 	elif cmd[0] == 'R':
 		machine = int(cmd[1])
 		state.machines[machine].registered = True
@@ -342,6 +349,10 @@ def verify_data(numbers):
 		for i in range(numbers[2]):
 			check_courier(i, state, ln)	
 		line = read_line(numbers)
+	assert state.watoff.jobs == 0
+	if state.watoff.jobs != 0:
+		raise Exception("Error! Mismatched (Ts + Cs) and Ws!")
+	assert state.watoff.jobsToGive == []
 	print "Verified"
 		
 				
