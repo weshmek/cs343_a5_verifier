@@ -4,9 +4,6 @@ import re
 import string
 def read_line1():
 	#Read initial line to get number of students, machines, and couriers
-	Couriers = []
-	Machines = []
-	Students = []
 	LINE1 = raw_input()
 	#print LINE1
 	pattern = re.compile("(Parent)\s+(WATOff)\s+(Names)\s+(Truck)\s+(Plant)\s+(Stud([0-9])+\s+)+(Mach([0-9])+\s+)+(Cour([0-9])+\s*)+")
@@ -324,6 +321,7 @@ def check_nameserver(state, line):
 		
 
 lines = []
+#numbers = (numStudents, numMachines, numCouriers)
 def verify_data(numbers):
 	state = State([], [], [], SimObj(), WATOffice(), SimObj(), SimObj(), SimObj())
 	state.students = []
@@ -336,7 +334,7 @@ def verify_data(numbers):
 	for i in range(numbers[2]):
 		state.couriers.append(Courier(i))
 
-
+	#Decode and read each line
 	line = read_line(numbers)
 	while line:
 		lines.append(line)
@@ -349,10 +347,10 @@ def verify_data(numbers):
 		for i in range(numbers[2]):
 			check_courier(i, state, ln)	
 		line = read_line(numbers)
-	assert state.watoff.jobs == 0
 	if state.watoff.jobs != 0:
 		raise Exception("Error! Mismatched (Ts + Cs) and Ws!")
-	assert state.watoff.jobsToGive == []
+	if state.watoff.jobsToGive != 0:
+		raise Exception("Error! Jobs remaining on exit!")
 	print "Verified"
 		
 				
@@ -367,3 +365,4 @@ except BaseException as be:
 	for line in lines:
 		print line
 	print str(be)
+	exit(1)
