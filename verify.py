@@ -48,6 +48,7 @@ class Machine(SimObj):
 	cost = 0
 	refillStarted = 0
 	registered = False
+	reloading = False
 	
 class Courier(SimObj):
 	idn = 0
@@ -57,6 +58,12 @@ class Courier(SimObj):
 	jobTaken = False
 	def __init__(this,_id):
 		this.idn = _id
+
+class Truck(SimObj):
+	quantities = [0,0,0,0]
+	vendingMachineDelivering = 0
+	firstDelivery = False
+	delivering = False
 
 
 
@@ -164,8 +171,8 @@ def check_watoff(state, line):
 	elif line.watoff[0] == 'C':
 		studentId = int(line.watoff[1])
 		studentAmt = int(line.watoff[3])
-		#if state.students[studentId].started == False or state.students[studentId].ended == True:
-		#	raise Exception("Error! Zombie student!")
+		if state.students[studentId].started == False or state.students[studentId].ended == True:
+			raise Exception("Error! Zombie student!")
 		if studentAmt != 5:
 			raise Exception("Error! Student must create WATCard with $5 balance!")
 		if state.students[studentId].cardLost != True:
@@ -284,7 +291,7 @@ def check_student(_id, state, line):
 			raise Exception("Error! Student lost card twice!")
 		me.cardLost = True
 	elif cmd[0] == 'F':
-		me.ended = False
+		me.ended = True 
 	else:
 		print cmd
 		raise Exception("Error! Student unknown command!")
@@ -316,14 +323,124 @@ def check_nameserver(state, line):
 	else:
 		print cmd
 		raise Exception("Error! nameserver unknown command!")
+
+def check_machine(_id, state, line):
+	me = state.machines[_id]
+	cmd = line.machines[_id]
+	if passline(cmd):
+		return
+	elif me.ended == True:
+		raise Exception("Error! Zombie machine!")
+	elif cmd[0] == 'S':
+		if me.started == True:
+			raise Exception("Error! Machine started twice!")
+		me.started = True
+		return
+	if me.started == False:
+		raise Exception("Error! Must start machine first!")
+	elif cmd[0] == 'r':
+		me.reloading = True
+		return
+	elif cmd[0] == 'R':
+		me.reloading = False
+		return
+	if me.reloading == True:
+		raise Exception("Error! Machine can't do things while reloading!")
+	if cmd[0] == 'B':
+		flavour = int(cmd[1])
+		remaining = int(cmd[3])
+		#if (remaining > me.quantities[flavour]):
+		#	raise Exception("Error! Machine Inusfficient quantity bought!")
+		me.quantities[flavour] = remaining
+		return
+	if cmd[0] == 'F':
+		me.ended = True
+		return
+	print cmd
+	raise Exception("Error! Machine unknown operation!")
 		
+		
+def check_truck(state, line):
+	me = state.truck
+	cmd = line.truck
+	if passline(cmd):
+		return
+	elif me.ended == True:
+		#Truck with no driver!
+		raise Exception("Error! Maximum Overdrive!")	
+	elif cmd[0] == 'S':
+		if me.started == True:
+			raise Exception("Error! Truck started twice!")
+		me.started = True
+	elif cmd[0] == 'd':
+		machineId = int(cmd[1])
+		if me.delivering == True:
+			raise Exception("Error! Truck already delivering!")
+		if me.firstDelivery == False:
+			me.firstDelivery = True
+			me.vendingMachineDelivering = machineId
+		elif machineId != me.vendingMachineDelivering % len(state.machines):
+			raise Exception("Error! Machines delivered out of order!")
+		me.delivering = True
+		me.vendingMachineDelivering = machineId
+				
+	elif cmd[0] == 'U':
+		machineId = int(cmd[1])
+		if me.delivering == False:
+			raise Exception("Error! Truck not delivering!")
+		#TODO: I don't know
+			
+	elif cmd[0] == 'D':
+		#TODO
+		me.delivering = False
+		me.vendingMachineDelivering += 1
+		me.vendingMachineDelivering %= len(state.machines)
+		return
+	elif cmd[0] == 'P':
+		sodaAmount = int(cmd[1])
+		#TODO: Check factory delivered qty
+		for i in range(len(me.quantities)):
+			me.quantities[i] += sodaAmount / 4
+		
+	elif cmd[0] == 'F':
+		me.ended = True
+		
+	
+		
+
+def verify_ended(state):
+	if (state.parent.ended == False):
+		raise Exception("Error! Parent still alive!")
+	if (state.watoff.ended == False):
+		raise Exception("Error! WatOffice still alive!")
+	if state.names.ended == False:
+		raise Exception("Error! Nameserver still alive!")
+	if state.truck.ended == False:
+		raise Exception("Error! Truck still allive!")
+	#if state.plant.ended == False:
+	#	raise Exception("Error! Plant still alive!")
+	_id = 0
+	for student in state.students:
+		if student.ended == False:
+			raise Exception("Error! Student " + str(_id) + " still alive!")
+		_id += 1
+	_id = 0
+	for machine in state.machines:
+		if machine.ended == False:
+			raise Exception("Error! Machine " + str(_id) + " still alive!")
+		_id += 1
+	_id = 0
+	for courier in state.couriers:
+		if courier.ended == False:
+			raise Exception("Error! Courier " + str(_id) + " still alive!")
+		_id += 1
 
 		
 
 lines = []
 #numbers = (numStudents, numMachines, numCouriers)
 def verify_data(numbers):
-	state = State([], [], [], SimObj(), WATOffice(), SimObj(), SimObj(), SimObj())
+	state = State([], [], [], SimObj(), WATOffice(), SimObj(), Truck(), SimObj())
 	state.students = []
 	for i in range(numbers[0]):
 		state.students.append(Student())
@@ -341,16 +458,20 @@ def verify_data(numbers):
 		ln = Line(line, numbers)
 		check_parent(state, ln)	
 		check_nameserver(state,ln)
+		check_truck(state, ln)
 		for i in range(numbers[0]):
 			check_student(i, state, ln)
+		for i in range(numbers[1]):
+			check_machine(i, state, ln)
 		check_watoff(state, ln)
 		for i in range(numbers[2]):
 			check_courier(i, state, ln)	
 		line = read_line(numbers)
 	if state.watoff.jobs != 0:
 		raise Exception("Error! Mismatched (Ts + Cs) and Ws!")
-	if state.watoff.jobsToGive != 0:
+	if state.watoff.jobsToGive != []:
 		raise Exception("Error! Jobs remaining on exit!")
+	verify_ended(state)
 	print "Verified"
 		
 				
