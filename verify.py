@@ -11,7 +11,7 @@ def read_line1():
 	#Read initial line to get number of students, machines, and couriers
 	LINE1 = raw_input()
 	#print LINE1
-	pattern = re.compile("(Parent)\s+(WATOff)\s+(Names)\s+(Truck)\s+(Plant)\s+(Stud([0-9])+\s+)+(Mach([0-9])+\s+)+(Cour([0-9])+\s*)+")
+	pattern = re.compile("(Parent)\s+(WATOff)\s+(Names)\s+(Truck)\s+(Plant)\s+(Stud([0-9]+)+\s+)+(Mach([0-9]+)+\s+)+(Cour([0-9]+)+\s*)+")
 	m = pattern.match(LINE1)
 	if (m == None):
 		raise Exception("Error!")
@@ -21,6 +21,7 @@ def read_line1():
 	return (numStudents, numMachines, numCouriers)
 
 class SimObj:
+	# Everything has an S and F
 	started = False
 	ended = False
 
@@ -46,7 +47,11 @@ class Student(SimObj):
 	favouriteSoda = 0
 	numBottles = 0
 	cardLost = True
-	machine = 0
+	machines = []
+	numToPurchase=0
+	nsIndex = 0
+	def __init__(self):
+		self.machines = []
 
 class Machine(SimObj):
 	quantities = [0,0,0,0]
@@ -67,6 +72,7 @@ class Courier(SimObj):
 
 class Truck(SimObj):
 	quantities = [0,0,0,0]
+	quantity = 0
 	vendingMachineDelivering = 0
 	firstDelivery = False
 	delivering = False
@@ -298,6 +304,7 @@ def check_student(_id, state, line):
 			raise Exception("Error! Student started twice!")
 		me.favouriteSode = flavour
 		me.numBottles = bottles
+		me.numToPurchase = bottles
 		me.started = True	
 	elif cmd[0] == 'V':
 		#TODO: For some reason, in the output given by the sample executable,
@@ -309,14 +316,32 @@ def check_student(_id, state, line):
 		#	raise Exception("Error! Bad machine registration")
 		if state.machines[machine].registered == False and (line.names[0] != 'R' and int(line.names[1]) != machine):
 			raise Exception("Error! Unregistered machine!")
-		me.machine = machine
+		me.machines.append(machine)
 		return
 	elif cmd[0] == 'B':
 		#TODO
 		flavour = parse_one_number(cmd)
 		#if state.machines[me.machine].quantity == 0:
 		#	raise Exception("Error! Empty vending machine!")
-		state.machines[me.machine].quantity -= 1
+		# it's possible that the balance is insufficient, and the courier meant to replentish us is printed on the same line.
+		# so, unfortunately, we have to read the lines of the couriers
+		currentAmt = 0 # Amount given by courier on current line
+		for i in range(len(line.couriers)):
+			courier = state.couriers[i]
+			if courier.working == True and courier.studentId == _id:
+				if line.couriers[i][0] == 'T':
+					nums = parse_two_numbers(line.couriers[i])
+					currentAmt = nums[1]
+					break
+					
+		if (me.balance + currentAmt) > state.machines[me.machines[-1]].cost:
+			me.numBottles -= 1
+			me.balance -= state.machines[me.machines[-1]].cost
+			return
+		me.balance -= state.machines[me.machines[-1]].cost
+		if me.balance < 0:
+			raise Exception("Error! Overspending!")
+		me.numBottles -= 1
 		return
 	elif cmd[0] == 'L':
 		if me.cardLost == True:
@@ -324,6 +349,9 @@ def check_student(_id, state, line):
 		me.cardLost = True
 	elif cmd[0] == 'F':
 		me.ended = True 
+		if me.numBottles != 0:
+			errorStr = ("Error! Student supposed to purchase " + str(me.numToPurchase) + ", actual: " + str(me.numBottles))
+			raise Exception(errorStr)
 	else:
 		print cmd
 		raise Exception("Error! Student unknown command!")
@@ -347,7 +375,12 @@ def check_nameserver(state, line):
 		nums = parse_two_numbers(cmd)
 		studentId = nums[0]
 		machine = nums[1]
-		state.students[studentId].machine = machine
+		studMach = state.students[studentId].machines[state.students[studentId].nsIndex]
+		state.students[studentId].nsIndex += 1
+		if studMach != machine:
+			errstr = "Error! Vending Machine reg mismatch! Nameserver: " + str(machine) + " Student: " + str(state.students[studentId].machines[state.students[studentId].nsIndex  - 1]) + " studId: " + str(studentId)
+			raise Exception(errstr)
+		#state.students[studentId].machine = machine	
 	elif cmd[0] == 'R':
 		machine = parse_one_number(cmd)
 		state.machines[machine].registered = True
@@ -365,9 +398,11 @@ def check_machine(_id, state, line):
 	elif me.ended == True:
 		raise Exception("Error! Zombie machine!")
 	elif cmd[0] == 'S':
+		cost = parse_one_number(cmd)
 		if me.started == True:
 			raise Exception("Error! Machine started twice!")
 		me.started = True
+		me.cost = cost
 		return
 	if me.started == False:
 		raise Exception("Error! Must start machine first!")
@@ -386,6 +421,13 @@ def check_machine(_id, state, line):
 		#if (remaining > me.quantities[flavour]):
 		#	raise Exception("Error! Machine Inusfficient quantity bought!")
 		me.quantities[flavour] = remaining
+		me.quantity -= 1
+		#Can't check quantities of individual flavour, but can at least check that machine isn't below empty
+		if me.quantity < 0:
+			print "id: " + str(_id)
+			print flavour
+			print remaining
+			raise Exception("Error! Too much bought!")
 		return
 	if cmd[0] == 'F':
 		me.ended = True
@@ -409,6 +451,7 @@ def check_truck(state, line):
 	elif cmd[0] == 'd':
 		nums = parse_two_numbers(cmd)
 		machineId = nums[0]
+		amountLeft = nums[1]
 		if me.delivering == True:
 			raise Exception("Error! Truck already delivering!")
 		if me.firstDelivery == False:
@@ -416,6 +459,8 @@ def check_truck(state, line):
 			me.vendingMachineDelivering = machineId
 		elif machineId != me.vendingMachineDelivering % len(state.machines):
 			raise Exception("Error! Machines delivered out of order!")
+		if amountLeft != me.quantity:
+			raise Exception("Error!")
 		me.delivering = True
 		me.vendingMachineDelivering = machineId
 				
@@ -430,15 +475,18 @@ def check_truck(state, line):
 		#TODO
 		nums = parse_two_numbers(cmd)
 		machineId = nums[0]
+		amtLeft = nums[1]
 		me.delivering = False
 		me.vendingMachineDelivering += 1
 		me.vendingMachineDelivering %= len(state.machines)
+		state.machines[machineId].quantity += (me.quantity - amtLeft)
+		#print "id: " + str(machineId) + " quantity: " + str(state.machines[machineId].quantity)
+		me.quantity = amtLeft
 		return
 	elif cmd[0] == 'P':
 		sodaAmount = parse_one_number(cmd)
 		#TODO: Check factory delivered qty
-		for i in range(len(me.quantities)):
-			me.quantities[i] += sodaAmount / 4
+		me.quantity = sodaAmount
 		
 	elif cmd[0] == 'F':
 		me.ended = True
@@ -491,20 +539,25 @@ def verify_data(numbers):
 
 	#Decode and read each line
 	line = read_line(numbers)
+	lines.append(line)
 	while line:
-		lines.append(line)
 		ln = Line(line, numbers)
 		check_parent(state, ln)	
-		check_nameserver(state,ln)
 		check_truck(state, ln)
 		for i in range(numbers[0]):
 			check_student(i, state, ln)
+
 		for i in range(numbers[1]):
 			check_machine(i, state, ln)
 		check_watoff(state, ln)
 		for i in range(numbers[2]):
 			check_courier(i, state, ln)	
+
+		check_nameserver(state,ln)
+
+
 		line = read_line(numbers)
+		lines.append(line)
 	if state.watoff.jobs != 0:
 		raise Exception("Error! Mismatched (Ts + Cs) and Ws!")
 	if state.watoff.jobsToGive != []:
@@ -524,4 +577,5 @@ except BaseException as be:
 	for line in lines:
 		print line
 	print str(be)
+	raise
 	exit(1)
