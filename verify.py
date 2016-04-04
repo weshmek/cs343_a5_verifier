@@ -1,5 +1,10 @@
 #! /usr/bin/python
 #verify.py: Verifies the output of a5 executable
+
+# This script works by going through each line of the program output, and updating the state of objects representing the objects 
+# from the a5 program. Based on this state, the script is able to do basic sanity checking of the output to locate and report any major 
+# inconsistencies.
+
 import re
 import string
 def read_line1():
@@ -45,6 +50,7 @@ class Student(SimObj):
 
 class Machine(SimObj):
 	quantities = [0,0,0,0]
+	quantity = 0
 	cost = 0
 	refillStarted = 0
 	registered = False
@@ -85,6 +91,20 @@ def read_line(numbers):
 	while len(out) < sum(numbers) + 5:
 		out.append('')
 	return out	
+
+def parse_one_number(string):
+	return int(string[1:])
+
+def parse_two_numbers(string):
+	i = 1
+	ret = []
+	while(string[i] != ','):
+		i += 1
+	ret.append(int(string[1:i]))
+	ret.append(int(string[i+1:]))
+	return ret
+
+
 
 
 class State:
@@ -147,8 +167,9 @@ def check_parent(state, line):
 		state.parent.started = True
 		
 	elif line.parent[0] == 'D':
-		studentNum = int(line.parent[1])
-		studentAmt = int(line.parent[3])
+		nums = parse_two_numbers(line.parent)
+		studentNum = nums[0]
+		studentAmt = nums[1]
 		state.students[studentNum].account += studentAmt
 	elif line.parent[0] == 'F':
 		state.parent.ended = True
@@ -169,9 +190,11 @@ def check_watoff(state, line):
 			raise Exception("Error! WATOffice started twice!")
 		state.watoff.started = True
 	elif line.watoff[0] == 'C':
-		studentId = int(line.watoff[1])
-		studentAmt = int(line.watoff[3])
+		nums = parse_two_numbers(line.watoff)
+		studentId = nums[0]
+		studentAmt = nums[1]
 		if state.students[studentId].started == False or state.students[studentId].ended == True:
+			print studentId
 			raise Exception("Error! Zombie student!")
 		if studentAmt != 5:
 			raise Exception("Error! Student must create WATCard with $5 balance!")
@@ -186,8 +209,9 @@ def check_watoff(state, line):
 		state.students[studentId].cardLost = False
 		state.watoff.jobs += 1
 	elif line.watoff[0] == 'T':
-		studentId = int(line.watoff[1])
-		studentAmt = int(line.watoff[3])
+		nums = parse_two_numbers(line.watoff)
+		studentId = nums[0]
+		studentAmt = nums[1]
 		#if state.students[studentId].started == False or state.students[studentId].ended == True:
 		#	raise Exception("Error! Zombie student!")
 		for j in state.watoff.jobsToGive:
@@ -215,8 +239,9 @@ def check_courier(_id, state, line):
 			raise Exception("Error! Courier started twice!")
 		me.started = True
 	elif cmd[0] == 't':
-		studentId = int(cmd[1])
-		studentAmt = int(cmd[3])
+		nums = parse_two_numbers(cmd)
+		studentId = nums[0]
+		studentAmt = nums[1]
 		if state.watoff.jobsToGive == []:
 			raise Exception("Error! Courier: No job to give!")
 		if me.working == True:
@@ -231,15 +256,16 @@ def check_courier(_id, state, line):
 				break
 		for j in state.watoff.jobsToGive:
 			if j.studentId == studentId:
-				raise Exception("Error!")
+				raise Exception("Error! Two jobs for one student!")
 		if j == None:
 			raise Exception("Error! No matching job!")
 		me.amtToTransfer = studentAmt
 		me.studentId = studentId
 		me.working = True
 	elif cmd[0] == 'T':
-		studentId = int(cmd[1])
-		studentAmt = int(cmd[3])
+		nums = parse_two_numbers(cmd)
+		studentId = nums[0]
+		studentAmt = nums[1]
 		if me.working == False:
 			raise Exception("Error! Not working!")
 		if (me.amtToTransfer != studentAmt) or (me.studentId != studentId):
@@ -265,8 +291,9 @@ def check_student(_id, state, line):
 	elif me.ended == True:
 		raise Exception("Error! Zombie student!")
 	elif cmd[0] == 'S':
-		flavour = int(cmd[1])
-		bottles = int(cmd[3])
+		nums = parse_two_numbers(cmd)
+		flavour = nums[0]
+		bottles = nums[1]
 		if me.started == True:
 			raise Exception("Error! Student started twice!")
 		me.favouriteSode = flavour
@@ -277,14 +304,19 @@ def check_student(_id, state, line):
 		# 	NameServer N outputs always appear AFTER (or on the same line) as the student V output.
 		# 	This is counterintuitive, since the nameserver should generate the name before the student gets to use it.
 		#	For that reason, this section is incomplete.
-		machine = int(cmd[1]) #Nameserver needs to check this
+		machine = parse_one_number(cmd) #Nameserver needs to check this
 		#if me.machine != machine:
 		#	raise Exception("Error! Bad machine registration")
 		if state.machines[machine].registered == False and (line.names[0] != 'R' and int(line.names[1]) != machine):
 			raise Exception("Error! Unregistered machine!")
+		me.machine = machine
 		return
 	elif cmd[0] == 'B':
 		#TODO
+		flavour = parse_one_number(cmd)
+		#if state.machines[me.machine].quantity == 0:
+		#	raise Exception("Error! Empty vending machine!")
+		state.machines[me.machine].quantity -= 1
 		return
 	elif cmd[0] == 'L':
 		if me.cardLost == True:
@@ -312,11 +344,12 @@ def check_nameserver(state, line):
 		# 	NameServer N outputs always appear AFTER (or on the same line) as the student V output.
 		# 	This is counterintuitive, since the nameserver should generate the name before the student gets to use it.
 		#	For that reason, this section is incomplete.
-		studentId = int(cmd[1])
-		machine = int(cmd[3])
+		nums = parse_two_numbers(cmd)
+		studentId = nums[0]
+		machine = nums[1]
 		state.students[studentId].machine = machine
 	elif cmd[0] == 'R':
-		machine = int(cmd[1])
+		machine = parse_one_number(cmd)
 		state.machines[machine].registered = True
 	elif cmd[0] == 'F':
 		me.ended = True
@@ -347,8 +380,9 @@ def check_machine(_id, state, line):
 	if me.reloading == True:
 		raise Exception("Error! Machine can't do things while reloading!")
 	if cmd[0] == 'B':
-		flavour = int(cmd[1])
-		remaining = int(cmd[3])
+		nums = parse_two_numbers(cmd)
+		flavour = nums[0]
+		remaining = nums[1]
 		#if (remaining > me.quantities[flavour]):
 		#	raise Exception("Error! Machine Inusfficient quantity bought!")
 		me.quantities[flavour] = remaining
@@ -373,7 +407,8 @@ def check_truck(state, line):
 			raise Exception("Error! Truck started twice!")
 		me.started = True
 	elif cmd[0] == 'd':
-		machineId = int(cmd[1])
+		nums = parse_two_numbers(cmd)
+		machineId = nums[0]
 		if me.delivering == True:
 			raise Exception("Error! Truck already delivering!")
 		if me.firstDelivery == False:
@@ -385,19 +420,22 @@ def check_truck(state, line):
 		me.vendingMachineDelivering = machineId
 				
 	elif cmd[0] == 'U':
-		machineId = int(cmd[1])
+		nums = parse_two_numbers(cmd)
+		machineId = nums[0]
 		if me.delivering == False:
 			raise Exception("Error! Truck not delivering!")
 		#TODO: I don't know
 			
 	elif cmd[0] == 'D':
 		#TODO
+		nums = parse_two_numbers(cmd)
+		machineId = nums[0]
 		me.delivering = False
 		me.vendingMachineDelivering += 1
 		me.vendingMachineDelivering %= len(state.machines)
 		return
 	elif cmd[0] == 'P':
-		sodaAmount = int(cmd[1])
+		sodaAmount = parse_one_number(cmd)
 		#TODO: Check factory delivered qty
 		for i in range(len(me.quantities)):
 			me.quantities[i] += sodaAmount / 4
