@@ -1,4 +1,10 @@
 #! /usr/bin/python
+# This is licensed GNU GPL 2.0
+# By Wesley Chalmers <wwchalme@uwaterloo.ca>
+
+# This script is for use in the University of Waterloo course, CS343: Concurrency and Parallelism
+# THIS SCRIPT IS FOR TEST PURPOSES ONLY, AND ITS VERIFICATION IS NOT ANY SORT OF GUARANTEE OF THE CORRECTNESS OF YOUR PROGRAM
+
 #verify.py: Verifies the output of a5 executable
 
 # This script works by going through each line of the program output, and updating the state of objects representing the objects 
@@ -71,10 +77,15 @@ class Courier(SimObj):
 		this.idn = _id
 
 class Truck(SimObj):
+	#This value is not used since the output does not tell us the quantities of individual sodas.
 	quantities = [0,0,0,0]
+	#This is the total number of sodas on the truck
 	quantity = 0
+	#This is the vending machine we expect to visit next/are currently visiting.
 	vendingMachineDelivering = 0
+	#This is to prevent throwing an error on first delivery
 	firstDelivery = False
+	#This is to make sure that nothing happens between DUd
 	delivering = False
 
 
@@ -82,16 +93,16 @@ class Truck(SimObj):
 def read_line(numbers):
 	ln = raw_input()
 	if (ln == "*"*23):
+		#23 asterisks is the indication that the output is finished
 		return None
 	out = []
 	i = 0
-	j = 0
 	while (i < len(ln)):
 		j = i
-		while (ln[i] != '\t'):
+		while (i < len(ln) and ln[i] != '\t'):
 			i = i + 1
-			if (i == len(ln)):
-				break
+			#if (i == len(ln)):
+			#	break
 		out.append(ln[j:i])
 		i = i + 1
 	while len(out) < sum(numbers) + 5:
@@ -222,7 +233,7 @@ def check_watoff(state, line):
 		#	raise Exception("Error! Zombie student!")
 		for j in state.watoff.jobsToGive:
 			if j.studentId == studentId:
-				raise Exception("Error! T Student " + str(studentId) + " requesting two jobs at same time!" + str(j.studentAmt) + " " + str(studentAmt))
+				raise Exception("Error! T Student " + str(studentId) + " requesting two jobs at same time! " + str(j.studentAmt) + " " + str(studentAmt))
 		state.watoff.jobsToGive.append(Job(studentId, studentAmt))
 		state.watoff.jobs += 1
 	elif line.watoff[0] == 'W':
@@ -252,12 +263,10 @@ def check_courier(_id, state, line):
 			raise Exception("Error! Courier: No job to give!")
 		if me.working == True:
 			raise Exception("Error! Courier Working twice!")
-		job = None
 		for j in state.watoff.jobsToGive:
 			if j.studentId == studentId:
 				if j.studentAmt != studentAmt:
 					raise Exception("Error! courier mismatched jobs!")
-				job = j
 				state.watoff.jobsToGive.remove(j)
 				break
 		for j in state.watoff.jobsToGive:
@@ -376,9 +385,12 @@ def check_nameserver(state, line):
 		studentId = nums[0]
 		machine = nums[1]
 		studMach = state.students[studentId].machines[state.students[studentId].nsIndex]
+		#studMach = state.students[studentId].machines[0]
+		#if (len(state.students[studentId].machines) > 1):
+		#	state.students[studentId].machines.pop()
 		state.students[studentId].nsIndex += 1
 		if studMach != machine:
-			errstr = "Error! Vending Machine reg mismatch! Nameserver: " + str(machine) + " Student: " + str(state.students[studentId].machines[state.students[studentId].nsIndex  - 1]) + " studId: " + str(studentId)
+			errstr = "Error! Vending Machine reg mismatch! Nameserver: " + str(machine) + " Student: " + str(state.students[studentId].machines[0]) + " studId: " + str(studentId)
 			raise Exception(errstr)
 		#state.students[studentId].machine = machine	
 	elif cmd[0] == 'R':
@@ -483,6 +495,8 @@ def check_truck(state, line):
 		#print "id: " + str(machineId) + " quantity: " + str(state.machines[machineId].quantity)
 		me.quantity = amtLeft
 		return
+	elif me.delivering == True:
+		raise Exception("Error! Truck doing something other than delivering!")
 	elif cmd[0] == 'P':
 		sodaAmount = parse_one_number(cmd)
 		#TODO: Check factory delivered qty
