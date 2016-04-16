@@ -76,6 +76,10 @@ class Courier(SimObj):
 	def __init__(this,_id):
 		this.idn = _id
 
+class Plant(SimObj):
+	needPickup = False
+	shipping = 0
+
 class Truck(SimObj):
 	#This value is not used since the output does not tell us the quantities of individual sodas.
 	quantities = [0,0,0,0]
@@ -229,8 +233,8 @@ def check_watoff(state, line):
 		nums = parse_two_numbers(line.watoff)
 		studentId = nums[0]
 		studentAmt = nums[1]
-		#if state.students[studentId].started == False or state.students[studentId].ended == True:
-		#	raise Exception("Error! Zombie student!")
+		if state.students[studentId].started == False or state.students[studentId].ended == True:
+			raise Exception("Error! Zombie student!")
 		for j in state.watoff.jobsToGive:
 			if j.studentId == studentId:
 				raise Exception("Error! T Student " + str(studentId) + " requesting two jobs at same time! " + str(j.studentAmt) + " " + str(studentAmt))
@@ -499,11 +503,41 @@ def check_truck(state, line):
 		raise Exception("Error! Truck doing something other than delivering!")
 	elif cmd[0] == 'P':
 		sodaAmount = parse_one_number(cmd)
+		if not (state.plant.needPickup or line.plant[0] == 'P'):
+			raise Exception("Error! Plant doesn't need pickup!")
+		if sodaAmount != state.plant.shipping:
+			raise Exception("Error! Truck plant mismatch!")
 		#TODO: Check factory delivered qty
 		me.quantity = sodaAmount
 		
 	elif cmd[0] == 'F':
 		me.ended = True
+
+def check_plant(state, line):
+	me = state.plant
+	cmd = line.plant
+	if passline(cmd):
+		return
+	elif me.ended == True:
+		raise Exception("Error! Plant running after shutdown!")
+	elif cmd[0] == 'S':
+		if me.started:
+			raise Exception("Error! Plant started Twice!")
+		me.started = True
+	elif cmd[0] == 'G':
+		numGenerated = parse_one_number(cmd)
+		if me.needPickup:
+			raise Exception("Error! Two Gs!")
+		me.shipping = numGenerated
+		me.needPickup = True
+	elif cmd[0] == 'P':
+		if me.needPickup == False:	
+			raise Exception("Error! Two Ps!")
+		me.needPickup = False
+	elif cmd[0] == 'F':
+		me.ended = True
+		
+		
 		
 	
 		
@@ -540,7 +574,7 @@ def verify_ended(state):
 lines = []
 #numbers = (numStudents, numMachines, numCouriers)
 def verify_data(numbers):
-	state = State([], [], [], SimObj(), WATOffice(), SimObj(), Truck(), SimObj())
+	state = State([], [], [], SimObj(), WATOffice(), SimObj(), Truck(), Plant())
 	state.students = []
 	for i in range(numbers[0]):
 		state.students.append(Student())
@@ -557,6 +591,7 @@ def verify_data(numbers):
 	while line:
 		ln = Line(line, numbers)
 		check_parent(state, ln)	
+		check_plant(state, ln)
 		check_truck(state, ln)
 		for i in range(numbers[0]):
 			check_student(i, state, ln)
